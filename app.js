@@ -1,13 +1,31 @@
 return {
     node_name: '',
     manifest: {
-        timers: ['exit', 'second']
+        timers: ['update_partial', 'update_full', 'hands', 'flick_away']
     },
     persist: {
         version: 1,
         data: ['menu_structure']
     },
     config: {},
+
+    // watch stuff
+    complications: {
+        draw: {}
+    },
+    installed_complications: [],
+    timeout_partial_display_update: 15 * 60 * 1000,
+    timeout_full_display_update: 60 * 60 * 1000,
+    full_refresh_needed: false,
+    powersave_display: false,
+    powersave_hands: false,
+    time_telling_enabled: true,
+    wrist_flick_display_timeout: 5000,
+    wrist_flick_hands_timeout: 2200,
+    wrist_flick_hands_relative: true,
+    wrist_flick_move_hour: 360,
+    wrist_flick_move_minute: -360,
+    // end watch stuff
 
     menu_structure: {
         "label": "Main screen",
@@ -94,6 +112,43 @@ return {
             layout_data
         )
     },
+    draw_watch: function(response) {
+        response.draw = {
+            node_name: this.node_name,
+            package_name: this.package_name,
+            layout_function: 'layout_parser_json',
+            background: undefined,
+            array: [],
+            update_type: this.full_refresh_needed ? 'gc4' : 'du4',
+            skip_invert: true,
+        };
+        this.full_refresh_needed = false;
+        var counter = 0;
+        for (var key in this.config.layout) {
+            var layout = this.config.layout[key];
+            if ((layout === undefined) || (is_empty_string(layout.name))) {
+                continue;
+            }
+            if (layout.type === 'image') {
+                if ((layout.size.w == 240) && (layout.size.h == 240)) {
+                    response.draw.background = layout.name;
+                }
+            }
+            if (layout.type === 'comp') {
+                if (typeof(this.complications.draw[layout.name]) !== 'object' ) {
+                    continue;
+                }
+                response.draw.array[counter] = {
+                    size: layout.size,
+                    pos: layout.pos,
+                    background: layout.bg,
+                    $e: layout.color == 'black',
+                };
+                deep_fill(response.draw.array[counter], this.complications.draw[layout.name]);
+                counter++;
+            }
+        }
+    },
     wrap_state_machine: function(state_machine) {
         state_machine.set_current_state = state_machine.d
         state_machine.handle_event = state_machine._
@@ -166,7 +221,7 @@ return {
         // self.log(event)
 
         if (event.type === 'system_state_update' && event.concerns_this_app === true && event.new_state === 'visible') {
-            state_machine.d('menu')
+            state_machine.d('watch')
         } 
     },
     execute_handler: function(handler, response, force_draw){
@@ -239,6 +294,7 @@ return {
             save_node_persist(this.node_name)
             this.draw_menu(response)
         }
+        this.handle_watch_config_update()
     },
     handle_state_specific_event: function (state, state_phase) {
         switch (state) {
@@ -278,8 +334,181 @@ return {
                 }
                 break;
             }
+            case 'watch': {
+                if (state_phase == 'entry') {
+                    return function (self, response) {
+                        //this.update_complications({
+                        //    type: 'watch_face_update',
+                        //    reason: 'watch_face_visible',
+                        //});
+                        //redraw_needed = true;
+                        //this.full_refresh_needed = true;
+                        self.draw_watch(response);
+                        var hands = enable_time_telling();
+                        response.move_hands(hands.hour_pos,  hands.minute_pos, false)
+                        self.time_telling_enabled = true
+                        // start_timer(this.node_name, 'update_partial', this.timeout_partial_display_update);
+                        // start_timer(this.node_name, 'update_full', this.timeout_full_display_update);
+                    }
+                }
+                if (state_phase == 'during') {
+                    return function (self, state_machine, event, response) {
+                        var redraw_needed = false
+
+                        if(event.type == 'middle_hold'){
+                            response.go_back(true)
+                            return
+                        }else if(event.type == 'node_config_update'){
+                            if(event.node_name == self.node_name){
+                                self.handle_config_update(response)
+                            }
+                        }else if ((event.type == 'time_telling_update') && ((!self.powersave_hands) || (!get_common().device_offwrist))) {
+                            // Called every 20 seconds, i.e. every time the hands need to move
+                            
+                            var hands = enable_time_telling()
+                            response.move_hands(hands.hour_pos, hands.minute_pos, false)
+                        }else if ((event.type == 'common_update') && (event.device_offwrist)) {
+                            if (get_common().device_offwrist) {
+                                disable_time_telling();
+                                self.time_telling_enabled = false;
+                            } else {
+                                var hands = enable_time_telling();
+                                response.move_hands(hands.hour_pos,  hands.minute_pos, false)
+                                self.time_telling_enabled = true;
+                            }
+                        } else if(event.type == 'timer_expired'){
+                            if (is_this_timer_expired(event, self.node_name, 'hands')) {
+                                // Timer for reenabling time telling after wrist flick expired
+                                var hands = enable_time_telling();
+                                response.move = {
+                                    h: hands.hour_pos,
+                                    m: hands.minute_pos,
+                                    is_relative: false,
+                                };
+                                self.time_telling_enabled = true;
+                            }
+                            if(!self.powersave_display && !get_common().device_offwrist){
+                                if (is_this_timer_expired(event, self.node_name, 'update_partial')) {
+                                    // Timer for partial display updates expired
+                                    redraw_needed = self.update_complications({
+                                        type: 'display_data_updated',
+                                    });
+                                    start_timer(self.node_name, 'update_partial', self.timeout_partial_display_update);
+                                }
+                                if (is_this_timer_expired(event, self.node_name, 'update_full')) {
+                                    // Timer for full display updates expired
+                                    redraw_needed = true;
+                                    self.update_complications({
+                                        type: 'display_data_updated',
+                                    });
+                                    self.full_refresh_needed = true;
+                                    start_timer(self.node_name, 'update_full', self.timeout_full_display_update);
+                                }
+                            }
+                        } else if (event.type == 'flick_away') {
+                            // Called when the user flicks the wrist
+                            self.update_complications({
+                                type: 'display_data_updated',
+                                reason: 'flick_away',
+                            });
+                            //redraw_needed = true;
+                            start_timer(self.node_name, 'update_partial', self.timeout_partial_display_update);
+                            start_timer(self.node_name, 'flick_away', self.wrist_flick_display_timeout);
+                            if (self.time_telling_enabled) {
+                                disable_time_telling();
+                                self.time_telling_enabled = false;
+                            }
+                            start_timer(self.node_name, 'hands', self.wrist_flick_hands_timeout);
+                            response.move = {
+                                h: self.wrist_flick_move_hour,
+                                m: self.wrist_flick_move_minute,
+                                is_relative: self.wrist_flick_hands_relative,
+                            };
+                        }else if (((event.type === 'display_data_updated') || (self.update_complications(event))) && ((!self.powersave_display) || (!get_common().device_offwrist))) {
+                            // Something on the display needs to be updated
+                            redraw_needed = true;
+                        }
+                        if (redraw_needed) {
+                            self.draw_watch(response);
+                        }
+                    }
+                }
+                if (state_phase == 'exit') {
+                    return function (arg, arg2) { // function 14, 20
+
+                    }
+                }
+                break
+            }
         }
         return
+    },
+    update_complications: function(why) {
+        var need_update = {};
+        var result = false;
+        forward_input(why, this.installed_complications, need_update);
+        if (get_common().U('DIAL_INFO') === 'ON') {
+            for (var index in need_update) {
+                if (typeof(need_update[index].draw) === 'object') {
+                    result = true;
+                    for (var index2 in need_update[index].draw) {
+                        this.complications.draw[index2] = need_update[index].draw[index2];
+                    }
+                }
+            }
+        } else {
+            this.complications.draw = {};
+        }
+        return result;
+    },
+    calculate_position: function(pos, size) {
+        return {
+            Ue: Math.floor(pos.x - size.w / 2),
+            Qe: Math.floor(pos.y - size.h / 2),
+        };
+    },
+    handle_watch_config_update: function() {
+        for (var key in this.config.layout) {
+            var layout = this.config.layout[key];
+            if ((layout === undefined) || (is_empty_string(layout.name))) {
+                continue;
+            }
+            if (layout.type == 'comp') {
+                if (is_node_installed(layout.name)) {
+                    if (layout.pos != undefined) {
+                        layout.pos = this.calculate_position(layout.pos, layout.size);
+                    }
+                    var node_config = get_node_config(layout.name);
+                    if (layout.data != undefined) {
+                        node_config.data = layout.data;
+                    }
+                    this.installed_complications.push(layout.name);
+                    init_node(layout.name);
+                }
+            }
+        }
+        if (this.config.config != undefined) {
+            config_map = {
+                'timeout_display_partial':    ['number', 'timeout_partial_display_update'],
+                'timeout_display_full':       ['number', 'timeout_full_display_update'],
+                'wrist_flick_hands_relative': ['boolean', 'wrist_flick_hands_relative'],
+                'wrist_flick_move_hour':      ['number', 'wrist_flick_move_hour'],
+                'wrist_flick_move_minute':    ['number', 'wrist_flick_move_minute'],
+                'wrist_flick_duration':       ['number', 'wrist_flick_hands_timeout'],
+                'powersave_display':          ['boolean', 'powersave_display'],
+                'powersave_hands':            ['boolean', 'powersave_hands'],
+            }
+            for (var key in this.config.config) {
+                var value = this.config.config[key];
+                map = config_map[key]
+                if(map == null){
+                    continue
+                }
+                if(typeof value == map[0]){
+                    this[map[1]] = value
+                }
+            }
+        }
     },
     init: function () { // function 8
         this.current_action = this.menu_structure
