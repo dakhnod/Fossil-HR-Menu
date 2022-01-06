@@ -12,41 +12,34 @@ return {
     menu_structure: {
         "label": "Main screen",
         "is_submenu": true,
-        "close_app_on_finish": true,
-        "action_handlers": {
-          "top_short_press_release": {
-            "label": "Smarthome",
-            "is_submenu": true,
-            "action_handlers": {
-              "top_short_press_release": {
-                "label": "Open window",
-                "data_sent_on_action": "window_open",
-                "message_displayed_on_action": "opening window..."
-              },
-              "top_hold": {
-                "label": "Close window",
-                "data_sent_on_action": "window_close",
-                "message_displayed_on_action": "closing window..."
-              },
-              "middle_short_press_release": {
-                "label": "Toggle light",
-                "data_sent_on_action": "Licht umschalten",
-                "message_displayed_on_action": "toggling light..."
-              },
-              "bottom_short_press_release": {
-                "label": "Back",
-                "action_goes_back": true
-              }
-            }
+        "message_displayed_on_action": "Bit empty, huh?",
+        "action_handlers": [
+          {
+            "action": "top_short_press_release",
+            "label": "Short Press",
+            "message_displayed_on_action": "that was a top short press"
           },
-          "top_hold": {
-              "label": "Coffee"
+          {
+            "action": "top_hold",
+            "label": "Long Press",
+            "message_displayed_on_action": "that was a top long press"
           },
-          "bottom_short_press_release": {
-            "label": "Quit",
-            "action_closes_app": true
+          {
+            "action": "middle_short_press_release",
+            "label": "Reset",
+            "message_displayed_on_action": ""
+          },
+          {
+            "action": "bottom_short_press_release",
+            "label": "Short Press",
+            "message_displayed_on_action": "that was a bottom short press"
+          },
+          {
+            "action": "bottom_hold",
+            "label": "Long Press",
+            "message_displayed_on_action": "that was a bottom long press"
           }
-        }
+        ]
       },
 
     message_to_display: '',
@@ -60,8 +53,6 @@ return {
         req_data(this.node_name, '"type": "log", "data":' + JSON.stringify(object), 999999, true)
     },
     draw_menu: function (response) {
-        var handlers = this.current_action.action_handlers
-
         var layout_data = {
             json_file: 'menu_layout',
             menu_title: this.current_action.label,
@@ -70,17 +61,27 @@ return {
 
         var button_types = ['top', 'middle', 'bottom']
 
-        button_types.forEach(function(button_type){
-            var short_handler = handlers[button_type + '_short_press_release']
-            if(short_handler != null){
-                layout_data[button_type + '_short_press_label'] = short_handler.label
-            }
+
+        var handlers = this.current_action.action_handlers
+        if(handlers != null){
+            button_types.forEach(function(button_type){
+            var key = button_type + '_short_press_release'
+                handlers.forEach(function(handler){
+                    if(handler.action == key){
+                        layout_data[button_type + '_short_press_label'] = handler.label
+                        return
+                    }
+                })
             
-            var long_handler = handlers[button_type + '_hold']
-            if(long_handler != null){
-                layout_data[button_type + '_long_press_label'] = long_handler.label
-            }
-        })
+                key = button_type + '_hold'
+                handlers.forEach(function(handler){
+                    if(handler.action == key){
+                        layout_data[button_type + '_long_press_label'] = handler.label
+                        return
+                    }
+                })
+            })
+        }
         
         response.draw_screen(
             this.node_name,
@@ -156,40 +157,28 @@ return {
         return response
     },
     handle_global_event: function (self, state_machine, event, response) {
-        self.log("event type: " + event.type)
-        self.log(event)
+        // self.log("event type: " + event.type)
+        // self.log(event)
 
         if (event.type === 'system_state_update' && event.concerns_this_app === true && event.new_state === 'visible') {
             state_machine.d('menu')
         } 
     },
-    handle_menu_event: function(event, response){
-        var handler = null
-        if(event == null){
-            handler = this.current_action
-        }else{
-            var event_type = event.type
-            var handlers = this.current_action.action_handlers
-            handler = handlers[event_type]
-        }
-
-        if(handler == null){
-            return
-        }
-
+    execute_handler: function(handler, response, force_draw){
         var data = handler.data_sent_on_action
         if(data != null){
             req_data(this.node_name, '"commuteApp._.config.commute_info":{"dest":"' + data + '","action":"start"}', 999999, true)
         }
         var message = handler.message_displayed_on_action
+        var draw_menu = true
         if(message != null){
             this.message_to_display = message
-            this.draw_menu(response)
+            draw_menu = true
         }
         if(handler.is_submenu){
             handler.previous_action = this.current_action
             this.current_action = handler
-            this.draw_menu(response)
+            draw_menu = true
         }
         if(handler.action_goes_back){
             var previous = this.current_action.previous_action
@@ -197,11 +186,31 @@ return {
                 response.go_back(true)
             }else{
                 this.current_action = previous
-                this.draw_menu(response)
+                draw_menu = true
             }
         }
         if(handler.action_closes_app){
             response.go_back(true)
+        }else if(draw_menu){
+            this.draw_menu(response)
+        }
+    },
+    handle_menu_event: function(event, response){
+        var handler = null
+        if(event == null){
+            this.execute_handler(this.current_action, response, true)
+        }else{
+            var event_type = event.type
+            var handlers = this.current_action.action_handlers
+            if(handlers == null){
+                return
+            }
+            var self = this
+            handlers.forEach(function(handler){
+                if(handler.action == event_type){
+                    self.execute_handler(handler, response)
+                }
+            })
         }
     },
     handle_config_update: function(response){
@@ -245,6 +254,10 @@ return {
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
+                        if(event.type == 'middle_hold'){
+                            response.go_back(true)
+                            return
+                        }
                         if(event.type == 'node_config_update'){
                             if(event.node_name == self.node_name){
                                 self.handle_config_update(response)
