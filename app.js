@@ -56,7 +56,8 @@ return {
         var layout_data = {
             json_file: 'menu_layout',
             menu_title: this.current_action.label,
-            message_to_display: this.message_to_display
+            message_to_display: this.message_to_display,
+            middle_long_press_label: 'quit'
         }
 
         var button_types = ['top', 'middle', 'bottom']
@@ -65,13 +66,17 @@ return {
         var handlers = this.current_action.action_handlers
         if(handlers != null){
             button_types.forEach(function(button_type){
-            var key = button_type + '_short_press_release'
+                var key = button_type + '_short_press_release'
                 handlers.forEach(function(handler){
                     if(handler.action == key){
                         layout_data[button_type + '_short_press_label'] = handler.label
                         return
                     }
                 })
+
+                if(button_type == 'middle'){
+                    return
+                }
             
                 key = button_type + '_hold'
                 handlers.forEach(function(handler){
