@@ -148,6 +148,7 @@ return {
                 counter++;
             }
         }
+        this.draw_menu(response)
     },
     wrap_state_machine: function(state_machine) {
         state_machine.set_current_state = state_machine.d
@@ -221,7 +222,7 @@ return {
         // self.log(event)
 
         if (event.type === 'system_state_update' && event.concerns_this_app === true && event.new_state === 'visible') {
-            state_machine.d('watch')
+            state_machine.set_current_state('watch')
         } 
     },
     execute_handler: function(handler, response, force_draw){
@@ -243,35 +244,32 @@ return {
         if(handler.action_goes_back){
             var previous = this.current_action.previous_action
             if(previous == null){
-                response.go_back(true)
+                self.state_machine.set_current_state('watch')
             }else{
                 this.current_action = previous
                 draw_menu = true
             }
         }
         if(handler.action_closes_app){
-            response.go_back(true)
+            self.state_machine.set_current_state('watch')
         }else if(draw_menu){
+            this.state_machine.set_current_state('menu')
             this.draw_menu(response)
         }
     },
     handle_menu_event: function(event, response){
-        var handler = null
-        if(event == null){
-            this.execute_handler(this.current_action, response, true)
-        }else{
-            var event_type = event.type
-            var handlers = this.current_action.action_handlers
-            if(handlers == null){
-                return
-            }
-            var self = this
-            handlers.forEach(function(handler){
-                if(handler.action == event_type){
-                    self.execute_handler(handler, response)
-                }
-            })
+        var event_type = event.type
+        var handlers = this.current_action.action_handlers
+        if(handlers == null){
+            return
         }
+        var self = this
+        handlers.forEach(function(handler){
+            if(handler.action == event_type){
+                self.execute_handler(handler, response)
+            }
+        })
+        
     },
     handle_config_update: function(response){
         if(this.config.response != null){
@@ -294,7 +292,6 @@ return {
             save_node_persist(this.node_name)
             this.draw_menu(response)
         }
-        this.handle_watch_config_update()
     },
     handle_state_specific_event: function (state, state_phase) {
         switch (state) {
@@ -310,13 +307,12 @@ return {
                 if (state_phase == 'entry') {
                     return function (self, response) {
                         response.move_hands(200, 200, false)
-                        self.handle_menu_event(null, response)
                     }
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
                         if(event.type == 'middle_hold'){
-                            response.go_back(true)
+                            self.state_machine.set_current_state('watch')
                             return
                         }
                         if(event.type == 'node_config_update'){
@@ -328,8 +324,8 @@ return {
                     }
                 }
                 if (state_phase == 'exit') {
-                    return function (arg, arg2) { // function 14, 20
-
+                    return function (self, response) {
+                        self.current_action = self.menu_structure
                     }
                 }
                 break;
@@ -337,18 +333,17 @@ return {
             case 'watch': {
                 if (state_phase == 'entry') {
                     return function (self, response) {
-                        //this.update_complications({
-                        //    type: 'watch_face_update',
-                        //    reason: 'watch_face_visible',
-                        //});
-                        //redraw_needed = true;
-                        //this.full_refresh_needed = true;
+                        self.update_complications({
+                            type: 'watch_face_update',
+                            reason: 'watch_face_visible',
+                        });
+                        self.full_refresh_needed = true;
                         self.draw_watch(response);
                         var hands = enable_time_telling();
                         response.move_hands(hands.hour_pos,  hands.minute_pos, false)
                         self.time_telling_enabled = true
-                        // start_timer(this.node_name, 'update_partial', this.timeout_partial_display_update);
-                        // start_timer(this.node_name, 'update_full', this.timeout_full_display_update);
+                        start_timer(self.node_name, 'update_partial', this.timeout_partial_display_update);
+                        start_timer(self.node_name, 'update_full', this.timeout_full_display_update);
                     }
                 }
                 if (state_phase == 'during') {
@@ -356,15 +351,14 @@ return {
                         var redraw_needed = false
 
                         if(event.type == 'middle_hold'){
-                            response.go_back(true)
-                            return
+                            // response.go_back(true)
+                            // return
                         }else if(event.type == 'node_config_update'){
                             if(event.node_name == self.node_name){
                                 self.handle_config_update(response)
                             }
                         }else if ((event.type == 'time_telling_update') && ((!self.powersave_hands) || (!get_common().device_offwrist))) {
                             // Called every 20 seconds, i.e. every time the hands need to move
-                            
                             var hands = enable_time_telling()
                             response.move_hands(hands.hour_pos, hands.minute_pos, false)
                         }else if ((event.type == 'common_update') && (event.device_offwrist)) {
@@ -431,11 +425,15 @@ return {
                         if (redraw_needed) {
                             self.draw_watch(response);
                         }
+                        self.handle_menu_event(event, response)
                     }
                 }
                 if (state_phase == 'exit') {
-                    return function (arg, arg2) { // function 14, 20
-
+                    return function (self, response) {
+                        disable_time_telling()
+                        self.time_telling_enabled = false
+                        stop_timer(self.node_name, 'update_partial')
+                        stop_timer(self.node_name, 'update_full')
                     }
                 }
                 break
@@ -511,6 +509,7 @@ return {
         }
     },
     init: function () { // function 8
+        this.handle_watch_config_update()
         this.current_action = this.menu_structure
         this.state_machine = new state_machine(
             this,
