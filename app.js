@@ -75,7 +75,9 @@ return {
             json_file: 'menu_layout',
             menu_title: this.current_action.label,
             message_to_display: this.message_to_display,
-            middle_long_press_label: 'quit'
+        }
+        if(this.state_machine.get_current_state() == 'menu'){
+            layout_data['middle_long_press_label'] = 'quit'
         }
 
         var button_types = ['top', 'middle', 'bottom']
@@ -215,11 +217,25 @@ return {
             if (response.i == undefined) response.i = []
             response.i.push(event_object)
         }
+        response.open_app = function(appName){
+            response.action = {
+                type: 'open_app',
+                node_name: appName,
+                class: 'watch_app',
+            }
+        }
         return response
     },
     handle_global_event: function (self, state_machine, event, response) {
         // self.log("event type: " + event.type)
         // self.log(event)
+
+
+        if(event.type == 'node_config_update'){
+            if(event.node_name == self.node_name){
+                self.handle_config_update(response)
+            }
+        }
 
         if (event.type === 'system_state_update' && event.concerns_this_app === true && event.new_state === 'visible') {
             state_machine.set_current_state('watch')
@@ -240,6 +256,7 @@ return {
             handler.previous_action = this.current_action
             this.current_action = handler
             draw_menu = true
+            this.state_machine.set_current_state('menu')
         }
         if(handler.action_goes_back){
             var previous = this.current_action.previous_action
@@ -250,10 +267,12 @@ return {
                 draw_menu = true
             }
         }
+        if(handler.app_to_open != null){
+            response.open_app(handler.app_to_open)
+        }
         if(handler.action_closes_app){
             self.state_machine.set_current_state('watch')
         }else if(draw_menu){
-            this.state_machine.set_current_state('menu')
             this.draw_menu(response)
         }
     },
@@ -290,7 +309,11 @@ return {
             this.config.menu_structure = null
             this.current_action = this.menu_structure
             save_node_persist(this.node_name)
-            this.draw_menu(response)
+            if(this.state_machine.get_current_state() == 'menu'){
+                this.state_machine.set_current_state('watch')
+            }else if(this.state_machine.get_current_state() == 'watch'){
+                this.draw_menu(response)
+            }
         }
     },
     handle_state_specific_event: function (state, state_phase) {
@@ -314,11 +337,6 @@ return {
                         if(event.type == 'middle_hold'){
                             self.state_machine.set_current_state('watch')
                             return
-                        }
-                        if(event.type == 'node_config_update'){
-                            if(event.node_name == self.node_name){
-                                self.handle_config_update(response)
-                            }
                         }
                         self.handle_menu_event(event, response)
                     }
@@ -348,15 +366,22 @@ return {
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
+
                         var redraw_needed = false
+
+                        if(event.type == 'top_short_press_release'){
+                            response.vibrate_text_pattern()
+                            response.action = {
+                                type: 'open_app',
+                                node_name: 'stopwatchApp',
+                                class: 'watch_app',
+                            }
+                            return
+                        }
 
                         if(event.type == 'middle_hold'){
                             // response.go_back(true)
                             // return
-                        }else if(event.type == 'node_config_update'){
-                            if(event.node_name == self.node_name){
-                                self.handle_config_update(response)
-                            }
                         }else if ((event.type == 'time_telling_update') && ((!self.powersave_hands) || (!get_common().device_offwrist))) {
                             // Called every 20 seconds, i.e. every time the hands need to move
                             var hands = enable_time_telling()
