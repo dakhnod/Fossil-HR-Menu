@@ -338,10 +338,6 @@ return {
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
                         self.log('event menu')
-                        if(event.type == 'middle_hold'){
-                            self.state_machine.set_current_state('watch')
-                            return
-                        }
                         self.handle_menu_event(event, response)
                     }
                 }
