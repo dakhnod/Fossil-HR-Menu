@@ -76,9 +76,9 @@ return {
             menu_title: this.current_action.label,
             message_to_display: this.message_to_display,
         }
-        if(this.state_machine.get_current_state() == 'menu'){
-            layout_data['middle_long_press_label'] = 'quit'
-        }
+        // if(this.state_machine.get_current_state() == 'menu'){
+        //     layout_data['middle_long_press_label'] = 'quit'
+        //}
 
         var button_types = ['top', 'middle', 'bottom']
 
@@ -260,10 +260,12 @@ return {
         }
         if(handler.action_goes_back){
             var previous = this.current_action.previous_action
-            if(previous == null){
+            this.current_action = previous
+            this.log('back')
+            if(previous == this.menu_structure){
+                this.log('watch...')
                 self.state_machine.set_current_state('watch')
             }else{
-                this.current_action = previous
                 draw_menu = true
             }
         }
@@ -296,7 +298,8 @@ return {
             if(is_finished){
                 response.vibrate_text_pattern()
                 if(this.current_action.close_app_on_finish){
-                    response.go_back(true)
+                    // response.go_back(true)
+                    this.state_machine.set_current_state('watch')
                     return
                 }
             }
@@ -308,7 +311,7 @@ return {
             this.menu_structure = this.config.menu_structure
             this.config.menu_structure = null
             this.current_action = this.menu_structure
-            save_node_persist(this.node_name)
+            save_node_persist(this.package_name)
             if(this.state_machine.get_current_state() == 'menu'){
                 this.state_machine.set_current_state('watch')
             }else if(this.state_machine.get_current_state() == 'watch'){
@@ -334,6 +337,7 @@ return {
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
+                        self.log('event menu')
                         if(event.type == 'middle_hold'){
                             self.state_machine.set_current_state('watch')
                             return
@@ -368,16 +372,6 @@ return {
                     return function (self, state_machine, event, response) {
 
                         var redraw_needed = false
-
-                        if(event.type == 'top_short_press_release'){
-                            response.vibrate_text_pattern()
-                            response.action = {
-                                type: 'open_app',
-                                node_name: 'stopwatchApp',
-                                class: 'watch_app',
-                            }
-                            return
-                        }
 
                         if(event.type == 'middle_hold'){
                             // response.go_back(true)
