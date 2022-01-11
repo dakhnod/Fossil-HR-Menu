@@ -25,6 +25,7 @@ return {
     wrist_flick_hands_relative: true,
     wrist_flick_move_hour: 360,
     wrist_flick_move_minute: -360,
+    action_closes_app_on_finish: false, 
     // end watch stuff
 
     menu_structure: {
@@ -255,19 +256,22 @@ return {
         if(data != null){
             req_data(this.node_name, '"commuteApp._.config.commute_info":{"dest":"' + data + '","action":"start"}', 999999, true)
         }
-        var message = handler.message_displayed_on_action
         var draw_menu = true
-        if(message != null){
-            this.message_to_display = message
-            draw_menu = true
-        }
         if(handler.is_submenu){
+            this.action_closes_app_on_finish = false
+            this.message_to_display = null
             handler.previous_action = this.current_action
             this.current_action = handler
             draw_menu = true
             this.state_machine.set_current_state('menu')
         }
+        if(handler.message_displayed_on_action != null){
+            this.message_to_display = handler.message_displayed_on_action
+            draw_menu = true
+        }
         if(handler.action_goes_back && this.current_action != this.menu_structure){
+            this.action_closes_app_on_finish = false
+            this.message_to_display = null
             var previous = this.current_action.previous_action
             this.current_action = previous
             if(previous == this.menu_structure){
@@ -276,11 +280,14 @@ return {
                 draw_menu = true
             }
         }
+        if(handler.action_closes_app_on_finish){
+            this.action_closes_app_on_finish = handler.action_closes_app_on_finish
+        }
         if(handler.app_to_open != null){
             response.open_app(handler.app_to_open)
         }
         if(handler.action_closes_app){
-            self.state_machine.set_current_state('watch')
+            this.state_machine.set_current_state('watch')
         }else if(draw_menu){
             this.draw_menu(response)
         }
@@ -304,9 +311,11 @@ return {
             var is_finished = this.config.response.is_finished
             if(is_finished){
                 response.vibrate_text_pattern()
-                if(this.current_action.close_app_on_finish){
+                if(this.action_closes_app_on_finish){
+                    this.action_closes_app_on_finish = false
                     // response.go_back(true)
                     this.state_machine.set_current_state('watch')
+                    this.config.response = null
                     return
                 }
             }
@@ -329,9 +338,14 @@ return {
     handle_state_specific_event: function (state, state_phase) {
         switch (state) {
             case 'background': {
+                if(state_phase == 'entry'){
+                    return function(self, response){
+                        self.message_to_display = null
+                        self.action_closes_app_on_finish = false
+                    }
+                }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
-
                     }
                 }
                 break;
@@ -339,7 +353,9 @@ return {
             case 'menu': {
                 if (state_phase == 'entry') {
                     return function (self, response) {
+                        self.action_closes_app_on_finish = false
                         response.move_hands(200, 200, false)
+                        self.message_to_display = null
                     }
                 }
                 if (state_phase == 'during') {
@@ -357,6 +373,8 @@ return {
             case 'watch': {
                 if (state_phase == 'entry') {
                     return function (self, response) {
+                        self.action_closes_app_on_finish = false
+                        self.message_to_display = null
                         self.update_complications({
                             type: 'watch_face_update',
                             reason: 'watch_face_visible',
