@@ -153,7 +153,12 @@ return {
         this.draw_menu(response)
     },
     wrap_state_machine: function(state_machine) {
-        state_machine.set_current_state = state_machine.d
+        state_machine.set_current_state = function(new_state){
+            if(state_machine.get_current_state() == new_state){
+                return
+            }
+            state_machine.d(new_state)
+        }
         state_machine.handle_event = state_machine._
         state_machine.get_current_state = function(){
             return state_machine.n
@@ -237,8 +242,12 @@ return {
             }
         }
 
-        if (event.type === 'system_state_update' && event.concerns_this_app === true && event.new_state === 'visible') {
-            state_machine.set_current_state('watch')
+        if (event.type === 'system_state_update' && event.concerns_this_app === true) {
+            if(event.new_state === 'visible'){
+                state_machine.set_current_state('watch')
+            }else{
+                state_machine.set_current_state('background')
+            }
         } 
     },
     execute_handler: function(handler, response, force_draw){
@@ -258,13 +267,11 @@ return {
             draw_menu = true
             this.state_machine.set_current_state('menu')
         }
-        if(handler.action_goes_back){
+        if(handler.action_goes_back && this.current_action != this.menu_structure){
             var previous = this.current_action.previous_action
             this.current_action = previous
-            this.log('back')
             if(previous == this.menu_structure){
-                this.log('watch...')
-                self.state_machine.set_current_state('watch')
+                this.state_machine.set_current_state('watch')
             }else{
                 draw_menu = true
             }
@@ -337,7 +344,6 @@ return {
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
-                        self.log('event menu')
                         self.handle_menu_event(event, response)
                     }
                 }
