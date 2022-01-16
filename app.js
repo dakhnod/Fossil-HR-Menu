@@ -1,7 +1,7 @@
 return {
     node_name: '',
     manifest: {
-        timers: ['update_partial', 'update_full', 'hands', 'flick_away']
+        timers: ['update_partial', 'update_full', 'hands', 'flick_away', 'menu']
     },
     persist: {
         version: 1,
@@ -14,6 +14,7 @@ return {
         draw: {}
     },
     installed_complications: [],
+    menu_timeout: 30 * 1000,
     timeout_partial_display_update: 15 * 60 * 1000,
     timeout_full_display_update: 60 * 60 * 1000,
     full_refresh_needed: false,
@@ -233,9 +234,8 @@ return {
         return response
     },
     handle_global_event: function (self, state_machine, event, response) {
-        // self.log("event type: " + event.type)
-        // self.log(event)
-
+        //self.log("event type: " + event.type)
+        //self.log(event)
 
         if(event.type == 'node_config_update'){
             if(event.node_name == self.node_name){
@@ -356,16 +356,27 @@ return {
                         self.action_closes_app_on_finish = false
                         response.move_hands(200, 200, false)
                         self.message_to_display = null
+                        start_timer(self.node_name, 'menu', self.menu_timeout)
                     }
                 }
                 if (state_phase == 'during') {
                     return function (self, state_machine, event, response) {
+                        if(event.type == 'timer_expired'){
+                            if (is_this_timer_expired(event, self.node_name, 'menu')) {
+                                self.state_machine.set_current_state('watch')
+                                return
+                            }
+                        }else if(event.class == 'user'){
+                            stop_timer(self.node_name, 'menu')
+                            start_timer(self.node_name, 'menu', self.menu_timeout)
+                        }
                         self.handle_menu_event(event, response)
                     }
                 }
                 if (state_phase == 'exit') {
                     return function (self, response) {
                         self.current_action = self.menu_structure
+                        stop_timer(self.node_name, 'menu')
                     }
                 }
                 break;
