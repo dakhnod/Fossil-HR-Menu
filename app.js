@@ -257,6 +257,7 @@ return {
         if(data != null){
             if(!this.is_connected()){
                 this.message_to_display = 'not connected'
+                response.vibrate_text_pattern()
                 display_message = false
             }else {
                 req_data(this.node_name, '"commuteApp._.config.commute_info":{"dest":"' + data + '","action":"start"}', 999999, true)
