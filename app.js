@@ -253,8 +253,14 @@ return {
     },
     execute_handler: function(handler, response, force_draw){
         var data = handler.data_sent_on_action
+        var display_message = true
         if(data != null){
-            req_data(this.node_name, '"commuteApp._.config.commute_info":{"dest":"' + data + '","action":"start"}', 999999, true)
+            if(!this.is_connected()){
+                this.message_to_display = 'not connected'
+                display_message = false
+            }else {
+                req_data(this.node_name, '"commuteApp._.config.commute_info":{"dest":"' + data + '","action":"start"}', 999999, true)
+            }
         }
         var draw_menu = true
         if(handler.is_submenu){
@@ -265,7 +271,7 @@ return {
             draw_menu = true
             this.state_machine.set_current_state('menu')
         }
-        if(handler.message_displayed_on_action != null){
+        if(handler.message_displayed_on_action != null && display_message){
             this.message_to_display = handler.message_displayed_on_action
             draw_menu = true
         }
@@ -490,6 +496,9 @@ return {
             }
         }
         return
+    },
+    is_connected: function(){
+        return get_common().app_status == 'connected'
     },
     update_complications: function(why) {
         var need_update = {};
