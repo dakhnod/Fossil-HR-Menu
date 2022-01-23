@@ -109,10 +109,9 @@ return {
                 })
             })
         }
-        
         response.draw_screen(
             this.node_name,
-            true,
+            this.current_action == this.menu_structure,
             layout_data
         )
     },
@@ -207,7 +206,7 @@ return {
         }
         response.draw_screen = function (node_name, full_update, layout_info) {
             response.draw = {
-                update_type: full_update ? 'du4' : 'gu4'
+                update_type: full_update ? 'gc4' : 'du4'
             }
             response.draw[node_name] = {
                 layout_function: 'layout_parser_json',
