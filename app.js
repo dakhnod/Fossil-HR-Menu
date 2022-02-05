@@ -151,15 +151,10 @@ return {
                 counter++;
             }
         }
-        this.draw_menu(response)
+        // this.draw_menu(response)
     },
     wrap_state_machine: function(state_machine) {
-        state_machine.set_current_state = function(new_state){
-            if(state_machine.get_current_state() == new_state){
-                return
-            }
-            state_machine.d(new_state)
-        }
+        state_machine.set_current_state = state_machine.d
         state_machine.handle_event = state_machine._
         state_machine.get_current_state = function(){
             return state_machine.n
@@ -337,31 +332,19 @@ return {
             if(this.state_machine.get_current_state() == 'menu'){
                 this.state_machine.set_current_state('watch')
             }else if(this.state_machine.get_current_state() == 'watch'){
-                this.draw_menu(response)
+                // this.draw_menu(response)
             }
         }
     },
     handle_state_specific_event: function (state, state_phase) {
         switch (state) {
             case 'background': {
-                if(state_phase == 'entry'){
-                    return function(self, response){
-                        self.message_to_display = null
-                        self.action_closes_app_on_finish = false
-                    }
-                }
-                if (state_phase == 'during') {
-                    return function (self, state_machine, event, response) {
-                    }
-                }
                 break;
             }
             case 'menu': {
                 if (state_phase == 'entry') {
                     return function (self, response) {
-                        self.action_closes_app_on_finish = false
                         response.move_hands(200, 200, false)
-                        self.message_to_display = null
                         start_timer(self.node_name, 'menu', self.menu_timeout)
                     }
                 }
@@ -381,7 +364,6 @@ return {
                 }
                 if (state_phase == 'exit') {
                     return function (self, response) {
-                        self.current_action = self.menu_structure
                         stop_timer(self.node_name, 'menu')
                     }
                 }
@@ -390,6 +372,7 @@ return {
             case 'watch': {
                 if (state_phase == 'entry') {
                     return function (self, response) {
+                        self.current_action = self.menu_structure
                         self.action_closes_app_on_finish = false
                         self.message_to_display = null
                         self.update_complications({
