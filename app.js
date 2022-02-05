@@ -245,6 +245,18 @@ return {
             }
         } 
     },
+    handle_button_event: function(event, response) {
+        for (var index in this.config.button_assignments) {
+            var config = this.config.button_assignments[index];
+            if (event.type === config.button_evt) {
+                response.action = {
+                    type: 'open_app',
+                    node_name: config.name,
+                    class: 'watch_app',
+                };
+            }
+        }
+    },
     execute_handler: function(handler, response, force_draw){
         var data = handler.data_sent_on_action
         var display_message = true
@@ -393,6 +405,11 @@ return {
 
                         var redraw_needed = false
 
+                        
+                        if (event.is_button_event) {
+                            // Handle physical button presses
+                            self.handle_button_event(event, response);
+                        }
                         if(event.type == 'middle_hold'){
                             // response.go_back(true)
                             // return
